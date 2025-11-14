@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Encrypt + Metadata + GitHub Action</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f4f4f9;
+            color: #333;
+        }
+        h1 { color: #2c3e50; text-align: center; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        label { display: block; margin-top: 20px; font-weight: bold; }
+        input[type="text"], input[type="password"], textarea { 
+            width: 100%; padding: 10px; margin-top: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px;
+        }
+        textarea { height: 120px; resize: vertical; }
+        button {
+            margin-top: 25px;
+            padding: 12px 24px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover { background: #2980b9; }
+        button:disabled { background: #95a5a6; cursor: not-allowed; }
+        .result { margin-top: 20px; padding: 15px; background: #e8f4fc; border-radius: 6px; font-family: monospace; word-break: break-all; }
+        .error { color: #e74c3c; background: #fadbd8; }
+        .success { color: #27ae60; background: #d5f5e3; }
+        .hidden { display: none; }
+        small { color: #7f8c8d; }
+        .metadata { background: #f8f9fa; padding: 12px; border-radius: 6px; margin-top: 10px; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <h1>Encrypt Text + Browser Metadata → GitHub Action</h1>
+    <div class="container">
+        <label for="plaintext">Plain Text to Encrypt:</label>
+        <textarea id="plaintext" placeholder="Enter sensitive message..."></textarea>
+
+        <label for="password">Encryption Password:</label>
+        <input type="password" id="password" placeholder="Strong password">
+
+        <label for="repo">GitHub Repository (owner/repo):</label>
+        <input type="text" id="repo" placeholder="e.g., octocat/Hello-World">
+
+        <label for="token">GitHub PAT (repo + workflow scopes):</label>
+        <input type="password" id="token" placeholder="ghp_...">
+
+        <label for="workflow">Workflow File (optional):</label>
+        <input type="text" id="workflow" placeholder="e.g., receive.yml">
+
+        <button id="encryptBtn">Encrypt with Metadata & Trigger</button>
+
+        <div id="metadataPreview" class="metadata hidden">
+            <strong>Collected Metadata (will be encrypted):</strong><br>
+            <pre id="metadataJson"></pre>
+        </div>
+
+        <div id="result" class="result hidden"></div>
+
+        <small>
+            <strong>Security:</strong> Everything runs in-browser. 
+            Password & token never leave your device. 
+            Metadata is embedded *inside* the encrypted payload.
+        </small>
+    </div>
+
+    <script>
+        // Collect browser metadata
+        function collectMetadata() {
+            const nav = navigator;
+            const screen = window.screen;
+            const now = new Date();
+
+            return {
+                timestamp: now.toISOString(),
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                userAgent: nav.userAgent,
+                language: nav.language || nav.userLanguage,
+                languages: nav.languages,
+                platform: nav.platform,
+                cookieEnabled: nav.cookieEnabled,
+                doNotTrack: nav.doNotTrack,
+                hardwareConcurrency: nav.hardwareConcurrency,
+                deviceMemory: nav.deviceMemory || 'unknown',
+                screen: {
+                    width: screen.width,
+                    height: screen.height,
+                    availWidth: screen.availWidth,
+                    availHeight: screen.availHeight,
+                    colorDepth: screen.colorDepth,
+                    pixelDepth: screen.pixelDepth
+                },
+                window: {
+                    innerWidth: window.innerWidth,
+                    innerHeight: window.innerHeight,
+                    outerWidth: window.outerWidth,
+                    outerHeight: window.outerHeight
+                },
+                referrer: document.referrer || null,
+                url: location.href
+            };
+        }
+
+        // Encrypt JSON payload (text + metadata)
+        async function encryptPayload(plainText, password) {
+            const metadata = collectMetadata();
+            const payload = {
+                message: plainText,
+                metadata: metadata
+            };
+
+            // Show preview
+            document.getElementById("metadataJson").textContent = JSON.stringify(metadata, null, 2);
+            document.getElementById("metadataPreview").classList.remove("hidden");
+
+            const enc = new TextEncoder();
+            const data = enc.encode(JSON.stringify(payload));
+
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+
+            const passwordBuffer = enc.encode(password);
+            const baseKey = await crypto.subtle.importKey("raw", passwordBuffer, "PBKDF2", false, ["deriveKey"]);
+            const key = await crypto.subtle.deriveKey(
+                { name: "PBKDF2", salt, iterations: 200000, hash: "SHA-256" },
+                baseKey,
+                { name: "AES-GCM", length: 256 },
+                false,
+                ["encrypt"]
+            );
+
+            const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, data);
+
+            const result = new Uint8Array(salt.byteLength + iv.byteLength + encrypted.byteLength);
+            result.set(salt, 0);
+            result.set(iv, salt.byteLength);
+            result.set(new Uint8Array(encrypted), salt.byteLength + iv.byteLength);
+
+            return btoa(String.fromCharCode(...result));
+        }
+
+        // Trigger GitHub Action
+        async function triggerGitHubAction(repo, token, encryptedText, workflowFile) {
+            const [owner, repoName] = repo.split('/');
+            if (!owner || !repoName) throw new Error("Invalid repo format. Use: owner/repo");
+
+            const url = workflowFile
+                ? `https://api.github.com/repos/${owner}/${repoName}/actions/workflows/${workflowFile}/dispatches`
+                : `https://api.github.com/repos/${owner}/${repoName}/actions/workflows/dispatches`;
+
+            const body = {
+                ref: "main",
+                inputs: {
+                    encrypted_payload: encryptedText
+                }
+            };
+
+            const response = await fetch(url, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Accept": "application/vnd.github.v3+json",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(body)
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(`GitHub API Error: ${response.status} - ${err.message || response.statusText}`);
+            }
+
+            return "GitHub Action triggered successfully!";
+        }
+
+        // Main handler
+        document.getElementById("encryptBtn").addEventListener("click", async () => {
+            const btn = document.getElementById("encryptBtn");
+            const resultDiv = document.getElementById("result");
+            const metadataPreview = document.getElementById("metadataPreview");
+            resultDiv.className = "result hidden";
+            metadataPreview.classList.add("hidden");
+            btn.disabled = true;
+            btn.textContent = "Encrypting...";
+
+            try {
+                const plainText = document.getElementById("plaintext").value.trim();
+                const password = document.getElementById("password").value;
+                const repo = document.getElementById("repo").value.trim();
+                const token = document.getElementById("token").value;
+                const workflow = document.getElementById("workflow").value.trim();
+
+                if (!plainText) throw new Error("Enter text to encrypt.");
+                if (!password) throw new Error("Password required.");
+                if (!repo) throw new Error("GitHub repo required.");
+                if (!token) throw new Error("GitHub PAT required.");
+
+                // Step 1: Encrypt text + metadata
+                const encrypted = await encryptPayload(plainText, password);
+
+                // Step 2: Trigger workflow
+                const message = await triggerGitHubAction(repo, token, encrypted, workflow);
+
+                // Success
+                resultDiv.className = "result success";
+                resultDiv.innerHTML = `
+                    <strong>Success!</strong><br>
+                    <small>Encrypted Payload (Base64):</small><br>
+                    <code style="font-size:11px;">${encrypted.substring(0, 100)}...</code><br><br>
+                    ${message}
+                `;
+
+            } catch (err) {
+                resultDiv.className = "result error";
+                resultDiv.textContent = "Error: " + err.message;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Encrypt with Metadata & Trigger";
+                resultDiv.classList.remove("hidden");
+            }
+        });
+    </script>
+</body>
+</html>
