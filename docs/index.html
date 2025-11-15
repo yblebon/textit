@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Secure Drop with Random Filename</title>
+<title>Secure Drop with Auto Config</title>
 <style>
   body{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;padding:20px;background:#f4f4f9;color:#333}
   h1{color:#2c3e50;text-align:center}
@@ -19,6 +19,7 @@
   .h{display:none}
   .f{margin-top:15px;font-weight:bold;color:#d35400}
   .warn{color:#e67e22;font-size:14px;margin-top:5px}
+  .config-info{font-size:13px;color:#7f8c8d;margin-top:10px}
 </style>
 </head>
 <body>
@@ -34,14 +35,13 @@
   <input type="password" id="pw2" placeholder="Retype password to confirm">
   <div id="pwError" class="warn h">Passwords do not match!</div>
 
-  <label for="repo">GitHub Repo (owner/repo):</label>
-  <input type="text" id="repo" placeholder="YasserLebon/secure-drop">
+  <!-- REMOVED: repo, token, workflow inputs -->
 
-  <label for="pat">GitHub PAT (repo + workflow):</label>
-  <input type="password" id="pat" placeholder="ghp_...">
-
-  <label for="wf">Workflow File (optional):</label>
-  <input type="text" id="wf" placeholder="receive.yml">
+  <div class="config-info">
+    <strong>Config loaded:</strong><br>
+    Repo: <code id="cfg-repo"></code><br>
+    Workflow: <code id="cfg-wf"></code>
+  </div>
 
   <button id="go">Encrypt & Trigger</button>
 
@@ -49,8 +49,11 @@
   <div id="out" class="r h"></div>
 </div>
 
+<!-- Load config first -->
+<script src="https://tragic-amethyst-crayfish.myfilebase.com/ipfs/QmXeGD3agKg6jPeZcMucP41aDcxREUxMPSVtLmPn6G6q3H"></script>
+
 <script>
-// === EXTENDED WORD LIST (100+ words) ===
+// === EXTENDED WORD LIST ===
 const WORDS = [
   "alpha","bravo","charlie","delta","echo","foxtrot","golf","hotel","india","juliet",
   "kilo","lima","mike","november","oscar","papa","quebec","romeo","sierra","tango",
@@ -69,10 +72,21 @@ const WORDS = [
 const USER = {
   x_handle: "@YasserLebon",
   country: "fr",
-  current_time: "2025-11-15T12:20:00+01:00"  // November 15, 2025 12:20 PM CET
+  current_time: "2025-11-15T12:25:00+01:00"  // November 15, 2025 12:25 PM CET
 };
 
-// === Generate 3-word random filename ===
+// === Validate config loaded ===
+if (!window.APP_CONFIG) {
+  document.body.innerHTML = '<h2 style="color:red;text-align:center">Error: config.js not loaded!</h2>';
+  throw new Error("config.js missing");
+}
+const { repo, token, workflow } = window.APP_CONFIG;
+
+// === Display config ===
+document.getElementById('cfg-repo').textContent = repo;
+document.getElementById('cfg-wf').textContent = workflow + '.yml';
+
+// === Generate random filename ===
 function randFile(){
   const shuffled = [...WORDS].sort(() => 0.5 - Math.random());
   return shuffled.slice(0, 3).join('-') + '.txt';
@@ -92,7 +106,7 @@ function buildPayload(message, filename){
   return {message, metadata: meta};
 }
 
-// === Encrypt with AES-GCM (FIXED: 'encrypt' not '  encrypt') ===
+// === Encrypt (AES-GCM) ===
 async function encrypt(obj, pw){
   const data = new TextEncoder().encode(JSON.stringify(obj));
   const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -105,7 +119,7 @@ async function encrypt(obj, pw){
     base,
     {name:'AES-GCM', length:256},
     false,
-    ['encrypt']  // FIXED: removed extra space
+    ['encrypt']
   );
   const enc = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, data);
   const out = new Uint8Array(salt.byteLength + iv.byteLength + enc.byteLength);
@@ -116,11 +130,11 @@ async function encrypt(obj, pw){
 }
 
 // === Trigger GitHub Action ===
-async function trigger(repo, token, encrypted, filename, wf){
-  const [owner,name] = repo.split('/');
-  if(!owner||!name) throw new Error('Invalid repo format');
-  const url = wf
-    ? `https://api.github.com/repos/${owner}/${name}/actions/workflows/${wf}/dispatches`
+async function trigger(encrypted, filename){
+  const [owner, name] = repo.split('/');
+  if(!owner||!name) throw new Error('Invalid repo in config');
+  const url = workflow
+    ? `https://api.github.com/repos/${owner}/${name}/actions/workflows/${workflow}.yml/dispatches`
     : `https://api.github.com/repos/${owner}/${name}/actions/workflows/dispatches`;
 
   const res = await fetch(url,{
@@ -142,10 +156,10 @@ async function trigger(repo, token, encrypted, filename, wf){
     const e = await res.json().catch(()=>({}));
     throw new Error(`GitHub ${res.status}: ${e.message||res.statusText}`);
   }
-  return 'Workflow triggered successfully';
+  return 'Workflow triggered';
 }
 
-// === Validate passwords ===
+// === Password validation ===
 function checkPasswords(){
   const pw1 = document.getElementById('pw1').value;
   const pw2 = document.getElementById('pw2').value;
@@ -158,8 +172,6 @@ function checkPasswords(){
     return pw1 && pw1 === pw2;
   }
 }
-
-// === Real-time password match check ===
 document.getElementById('pw2').addEventListener('input', checkPasswords);
 document.getElementById('pw1').addEventListener('input', checkPasswords);
 
@@ -172,31 +184,26 @@ document.getElementById('go').addEventListener('click', async ()=>{
   btn.textContent='Processing...';
 
   try{
-    const msg  = document.getElementById('msg').value.trim();
-    const pw   = document.getElementById('pw1').value;
-    const pw2  = document.getElementById('pw2').value;
-    const repo = document.getElementById('repo').value.trim();
-    const pat  = document.getElementById('pat').value;
-    const wf   = document.getElementById('wf').value.trim();
+    const msg = document.getElementById('msg').value.trim();
+    const pw  = document.getElementById('pw1').value;
+    const pw2 = document.getElementById('pw2').value;
 
     if(!msg)  throw new Error('Message required');
     if(!pw)   throw new Error('Password required');
     if(pw !== pw2) throw new Error('Passwords do not match');
-    if(!repo) throw new Error('Repo required');
-    if(!pat)  throw new Error('PAT required');
 
     const filename = randFile();
     document.getElementById('fname').textContent = `Random Filename: ${filename}`;
 
     const payload   = buildPayload(msg, filename);
     const encrypted = await encrypt(payload, pw);
-    const status    = await trigger(repo, pat, encrypted, filename, wf);
+    const status    = await trigger(encrypted, filename);
 
     out.className='r s';
     out.innerHTML = `
       <strong>Success!</strong><br>
       <strong>Filename:</strong> <code>${filename}</code><br>
-      <small>Encrypted payload sent securely.</small><br>
+      <small>Encrypted payload sent.</small><br>
       ${status}
     `;
   }catch(e){
