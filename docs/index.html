@@ -1,235 +1,213 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Encrypt + Metadata + GitHub Action</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 40px auto;
-            padding: 20px;
-            background: #f4f4f9;
-            color: #333;
-        }
-        h1 { color: #2c3e50; text-align: center; }
-        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        label { display: block; margin-top: 20px; font-weight: bold; }
-        input[type="text"], input[type="password"], textarea { 
-            width: 100%; padding: 10px; margin-top: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px;
-        }
-        textarea { height: 120px; resize: vertical; }
-        button {
-            margin-top: 25px;
-            padding: 12px 24px;
-            background: #3498db;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        button:hover { background: #2980b9; }
-        button:disabled { background: #95a5a6; cursor: not-allowed; }
-        .result { margin-top: 20px; padding: 15px; background: #e8f4fc; border-radius: 6px; font-family: monospace; word-break: break-all; }
-        .error { color: #e74c3c; background: #fadbd8; }
-        .success { color: #27ae60; background: #d5f5e3; }
-        .hidden { display: none; }
-        small { color: #7f8c8d; }
-        .metadata { background: #f8f9fa; padding: 12px; border-radius: 6px; margin-top: 10px; font-size: 13px; }
-    </style>
+<meta charset="UTF-8">
+<title>Secure Drop with Random Filename</title>
+<style>
+  body{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;padding:20px;background:#f4f4f9;color:#333}
+  h1{color:#2c3e50;text-align:center}
+  .c{background:#fff;padding:30px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.1)}
+  label{display:block;margin-top:20px;font-weight:bold}
+  input,textarea{width:100%;padding:10px;margin-top:8px;border:1px solid #ddd;border-radius:6px;font-size:16px}
+  textarea{height:120px;resize:vertical}
+  button{margin-top:25px;padding:12px 24px;background:#27ae60;color:#fff;border:none;border-radius:6px;font-size:16px;cursor:pointer}
+  button:hover{background:#1e8449}
+  button:disabled{background:#95a5a6;cursor:not-allowed}
+  .r{margin-top:20px;padding:15px;background:#e8f4fc;border-radius:6px;font-family:monospace}
+  .e{color:#e74c3c;background:#fadbd8}
+  .s{color:#27ae60;background:#d5f5e3}
+  .h{display:none}
+  .f{margin-top:15px;font-weight:bold;color:#d35400}
+  .warn{color:#e67e22;font-size:14px;margin-top:5px}
+</style>
 </head>
 <body>
-    <h1>Encrypt Text + Browser Metadata → GitHub Action</h1>
-    <div class="container">
-        <label for="plaintext">Plain Text to Encrypt:</label>
-        <textarea id="plaintext" placeholder="Enter sensitive message..."></textarea>
+<h1>Secure Drop → GitHub Action</h1>
+<div class="c">
+  <label for="msg">Secret Message:</label>
+  <textarea id="msg" placeholder="Enter your confidential message..."></textarea>
 
-        <label for="password">Encryption Password:</label>
-        <input type="password" id="password" placeholder="Strong password">
+  <label for="pw1">Password:</label>
+  <input type="password" id="pw1" placeholder="Enter strong password">
 
-        <label for="repo">GitHub Repository (owner/repo):</label>
-        <input type="text" id="repo" placeholder="e.g., octocat/Hello-World">
+  <label for="pw2">Confirm Password:</label>
+  <input type="password" id="pw2" placeholder="Retype password to confirm">
+  <div id="pwError" class="warn h">Passwords do not match!</div>
 
-        <label for="token">GitHub PAT (repo + workflow scopes):</label>
-        <input type="password" id="token" placeholder="ghp_...">
+  <label for="repo">GitHub Repo (owner/repo):</label>
+  <input type="text" id="repo" placeholder="YasserLebon/secure-drop">
 
-        <label for="workflow">Workflow File (optional):</label>
-        <input type="text" id="workflow" placeholder="e.g., receive.yml">
+  <label for="pat">GitHub PAT (repo + workflow):</label>
+  <input type="password" id="pat" placeholder="ghp_...">
 
-        <button id="encryptBtn">Encrypt with Metadata & Trigger</button>
+  <label for="wf">Workflow File (optional):</label>
+  <input type="text" id="wf" placeholder="receive.yml">
 
-        <div id="metadataPreview" class="metadata hidden">
-            <strong>Collected Metadata (will be encrypted):</strong><br>
-            <pre id="metadataJson"></pre>
-        </div>
+  <button id="go">Encrypt & Trigger</button>
 
-        <div id="result" class="result hidden"></div>
+  <div id="fname" class="f"></div>
+  <div id="out" class="r h"></div>
+</div>
 
-        <small>
-            <strong>Security:</strong> Everything runs in-browser. 
-            Password & token never leave your device. 
-            Metadata is embedded *inside* the encrypted payload.
-        </small>
-    </div>
+<script>
+// === EXTENDED WORD LIST (100+ words) ===
+const WORDS = [
+  "alpha","bravo","charlie","delta","echo","foxtrot","golf","hotel","india","juliet",
+  "kilo","lima","mike","november","oscar","papa","quebec","romeo","sierra","tango",
+  "uniform","victor","whiskey","xray","yankee","zulu",
+  "red","blue","green","yellow","black","white","gold","silver","bronze","iron",
+  "storm","cloud","river","mountain","forest","desert","ocean","island","valley","canyon",
+  "phoenix","dragon","tiger","wolf","eagle","falcon","hawk","raven","sparrow","owl",
+  "comet","nebula","quasar","galaxy","orbit","lunar","solar","cosmic","stellar","nova",
+  "cipher","vault","lock","key","token","hash","salt","iv","auth","session",
+  "quantum","vector","matrix","pixel","frame","render","shader","kernel","thread","core",
+  "ember","flame","spark","blaze","inferno","frost","glacier","tempest","breeze","gust",
+  "shadow","ghost","phantom","specter","wraith","echo","pulse","wave","signal","beacon"
+];
 
-    <script>
-        // Collect browser metadata
-        function collectMetadata() {
-            const nav = navigator;
-            const screen = window.screen;
-            const now = new Date();
+// === USER INFO (UPDATED) ===
+const USER = {
+  x_handle: "@YasserLebon",
+  country: "fr",
+  current_time: "2025-11-15T12:20:00+01:00"  // November 15, 2025 12:20 PM CET
+};
 
-            return {
-                timestamp: now.toISOString(),
-                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                userAgent: nav.userAgent,
-                language: nav.language || nav.userLanguage,
-                languages: nav.languages,
-                platform: nav.platform,
-                cookieEnabled: nav.cookieEnabled,
-                doNotTrack: nav.doNotTrack,
-                hardwareConcurrency: nav.hardwareConcurrency,
-                deviceMemory: nav.deviceMemory || 'unknown',
-                screen: {
-                    width: screen.width,
-                    height: screen.height,
-                    availWidth: screen.availWidth,
-                    availHeight: screen.availHeight,
-                    colorDepth: screen.colorDepth,
-                    pixelDepth: screen.pixelDepth
-                },
-                window: {
-                    innerWidth: window.innerWidth,
-                    innerHeight: window.innerHeight,
-                    outerWidth: window.outerWidth,
-                    outerHeight: window.outerHeight
-                },
-                referrer: document.referrer || null,
-                url: location.href
-            };
-        }
+// === Generate 3-word random filename ===
+function randFile(){
+  const shuffled = [...WORDS].sort(() => 0.5 - Math.random());
+  return shuffled.slice(0, 3).join('-') + '.txt';
+}
 
-        // Encrypt JSON payload (text + metadata)
-        async function encryptPayload(plainText, password) {
-            const metadata = collectMetadata();
-            const payload = {
-                message: plainText,
-                metadata: metadata
-            };
+// === Build payload ===
+function buildPayload(message, filename){
+  const meta = {
+    user: USER,
+    filename,
+    timestamp: new Date().toISOString(),
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    screen: `${screen.width}x${screen.height}`,
+    url: location.href
+  };
+  return {message, metadata: meta};
+}
 
-            // Show preview
-            document.getElementById("metadataJson").textContent = JSON.stringify(metadata, null, 2);
-            document.getElementById("metadataPreview").classList.remove("hidden");
+// === Encrypt with AES-GCM (FIXED: 'encrypt' not '  encrypt') ===
+async function encrypt(obj, pw){
+  const data = new TextEncoder().encode(JSON.stringify(obj));
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const pwBuf = new TextEncoder().encode(pw);
 
-            const enc = new TextEncoder();
-            const data = enc.encode(JSON.stringify(payload));
+  const base = await crypto.subtle.importKey('raw', pwBuf, 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt, iterations:250000, hash:'SHA-256'},
+    base,
+    {name:'AES-GCM', length:256},
+    false,
+    ['encrypt']  // FIXED: removed extra space
+  );
+  const enc = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, data);
+  const out = new Uint8Array(salt.byteLength + iv.byteLength + enc.byteLength);
+  out.set(salt,0);
+  out.set(iv,salt.byteLength);
+  out.set(new Uint8Array(enc),salt.byteLength+iv.byteLength);
+  return btoa(String.fromCharCode(...out));
+}
 
-            const salt = crypto.getRandomValues(new Uint8Array(16));
-            const iv = crypto.getRandomValues(new Uint8Array(12));
+// === Trigger GitHub Action ===
+async function trigger(repo, token, encrypted, filename, wf){
+  const [owner,name] = repo.split('/');
+  if(!owner||!name) throw new Error('Invalid repo format');
+  const url = wf
+    ? `https://api.github.com/repos/${owner}/${name}/actions/workflows/${wf}/dispatches`
+    : `https://api.github.com/repos/${owner}/${name}/actions/workflows/dispatches`;
 
-            const passwordBuffer = enc.encode(password);
-            const baseKey = await crypto.subtle.importKey("raw", passwordBuffer, "PBKDF2", false, ["deriveKey"]);
-            const key = await crypto.subtle.deriveKey(
-                { name: "PBKDF2", salt, iterations: 200000, hash: "SHA-256" },
-                baseKey,
-                { name: "AES-GCM", length: 256 },
-                false,
-                ["encrypt"]
-            );
+  const res = await fetch(url,{
+    method:'POST',
+    headers:{
+      'Authorization':`Bearer ${token}`,
+      'Accept':'application/vnd.github.v3+json',
+      'Content-Type':'application/json'
+    },
+    body: JSON.stringify({
+      ref: 'main',
+      inputs: {
+        encrypted_payload: encrypted,
+        output_filename: filename
+      }
+    })
+  });
+  if(!res.ok){
+    const e = await res.json().catch(()=>({}));
+    throw new Error(`GitHub ${res.status}: ${e.message||res.statusText}`);
+  }
+  return 'Workflow triggered successfully';
+}
 
-            const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, data);
+// === Validate passwords ===
+function checkPasswords(){
+  const pw1 = document.getElementById('pw1').value;
+  const pw2 = document.getElementById('pw2').value;
+  const err = document.getElementById('pwError');
+  if (pw1 && pw2 && pw1 !== pw2) {
+    err.classList.remove('h');
+    return false;
+  } else {
+    err.classList.add('h');
+    return pw1 && pw1 === pw2;
+  }
+}
 
-            const result = new Uint8Array(salt.byteLength + iv.byteLength + encrypted.byteLength);
-            result.set(salt, 0);
-            result.set(iv, salt.byteLength);
-            result.set(new Uint8Array(encrypted), salt.byteLength + iv.byteLength);
+// === Real-time password match check ===
+document.getElementById('pw2').addEventListener('input', checkPasswords);
+document.getElementById('pw1').addEventListener('input', checkPasswords);
 
-            return btoa(String.fromCharCode(...result));
-        }
+// === Main ===
+document.getElementById('go').addEventListener('click', async ()=>{
+  const btn = document.getElementById('go');
+  const out = document.getElementById('out');
+  out.className='r h';
+  btn.disabled=true;
+  btn.textContent='Processing...';
 
-        // Trigger GitHub Action
-        async function triggerGitHubAction(repo, token, encryptedText, workflowFile) {
-            const [owner, repoName] = repo.split('/');
-            if (!owner || !repoName) throw new Error("Invalid repo format. Use: owner/repo");
+  try{
+    const msg  = document.getElementById('msg').value.trim();
+    const pw   = document.getElementById('pw1').value;
+    const pw2  = document.getElementById('pw2').value;
+    const repo = document.getElementById('repo').value.trim();
+    const pat  = document.getElementById('pat').value;
+    const wf   = document.getElementById('wf').value.trim();
 
-            const url = workflowFile
-                ? `https://api.github.com/repos/${owner}/${repoName}/actions/workflows/${workflowFile}/dispatches`
-                : `https://api.github.com/repos/${owner}/${repoName}/actions/workflows/dispatches`;
+    if(!msg)  throw new Error('Message required');
+    if(!pw)   throw new Error('Password required');
+    if(pw !== pw2) throw new Error('Passwords do not match');
+    if(!repo) throw new Error('Repo required');
+    if(!pat)  throw new Error('PAT required');
 
-            const body = {
-                ref: "main",
-                inputs: {
-                    encrypted_payload: encryptedText
-                }
-            };
+    const filename = randFile();
+    document.getElementById('fname').textContent = `Random Filename: ${filename}`;
 
-            const response = await fetch(url, {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${token}`,
-                    "Accept": "application/vnd.github.v3+json",
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(body)
-            });
+    const payload   = buildPayload(msg, filename);
+    const encrypted = await encrypt(payload, pw);
+    const status    = await trigger(repo, pat, encrypted, filename, wf);
 
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(`GitHub API Error: ${response.status} - ${err.message || response.statusText}`);
-            }
-
-            return "GitHub Action triggered successfully!";
-        }
-
-        // Main handler
-        document.getElementById("encryptBtn").addEventListener("click", async () => {
-            const btn = document.getElementById("encryptBtn");
-            const resultDiv = document.getElementById("result");
-            const metadataPreview = document.getElementById("metadataPreview");
-            resultDiv.className = "result hidden";
-            metadataPreview.classList.add("hidden");
-            btn.disabled = true;
-            btn.textContent = "Encrypting...";
-
-            try {
-                const plainText = document.getElementById("plaintext").value.trim();
-                const password = document.getElementById("password").value;
-                const repo = document.getElementById("repo").value.trim();
-                const token = document.getElementById("token").value;
-                const workflow = document.getElementById("workflow").value.trim();
-
-                if (!plainText) throw new Error("Enter text to encrypt.");
-                if (!password) throw new Error("Password required.");
-                if (!repo) throw new Error("GitHub repo required.");
-                if (!token) throw new Error("GitHub PAT required.");
-
-                // Step 1: Encrypt text + metadata
-                const encrypted = await encryptPayload(plainText, password);
-
-                // Step 2: Trigger workflow
-                const message = await triggerGitHubAction(repo, token, encrypted, workflow);
-
-                // Success
-                resultDiv.className = "result success";
-                resultDiv.innerHTML = `
-                    <strong>Success!</strong><br>
-                    <small>Encrypted Payload (Base64):</small><br>
-                    <code style="font-size:11px;">${encrypted.substring(0, 100)}...</code><br><br>
-                    ${message}
-                `;
-
-            } catch (err) {
-                resultDiv.className = "result error";
-                resultDiv.textContent = "Error: " + err.message;
-            } finally {
-                btn.disabled = false;
-                btn.textContent = "Encrypt with Metadata & Trigger";
-                resultDiv.classList.remove("hidden");
-            }
-        });
-    </script>
+    out.className='r s';
+    out.innerHTML = `
+      <strong>Success!</strong><br>
+      <strong>Filename:</strong> <code>${filename}</code><br>
+      <small>Encrypted payload sent securely.</small><br>
+      ${status}
+    `;
+  }catch(e){
+    out.className='r e';
+    out.textContent='Error: '+e.message;
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Encrypt & Trigger';
+    out.classList.remove('h');
+  }
+});
+</script>
 </body>
 </html>
