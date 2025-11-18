@@ -38,7 +38,7 @@
 <h1>Secure Drop</h1>
 <div class="subtitle">
   Private encrypted messages • @YasserLebon • France<br>
-  <small>November 17, 2025 05:40 PM CET</small>
+  <small>November 18, 2025</small>
 </div>
 
 <div class="tabs">
@@ -71,7 +71,7 @@
   <div id="decryptResult" class="result hidden"></div>
 </div>
 
-<script src="https://tragic-amethyst-crayfish.myfilebase.com/ipfs/QmfBefGXqwnP6r2vrFytc1vP6TwxvqA1tU4j8yqVb5LYmD"></script>
+<script src="config.js"></script>
 <script>
 function decodeBase64Safely(b64) {
   b64 = b64.trim().replace(/-/g, '+').replace(/_/g, '/');
@@ -81,13 +81,42 @@ function decodeBase64Safely(b64) {
 }
 function uint8ToB64(arr) { return btoa(String.fromCharCode(...arr)); }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   if (!window.APP_CONFIG?.crypto) { alert("config.js missing!"); return; }
   const { repo, token, workflow, jsonbin_list_url, jsonbin_secret, crypto: C } = window.APP_CONFIG;
 
-  const USER = { x_handle: "@YasserLebon", country: "fr", current_time: "2025-11-17T17:40:00+01:00" };
+  const USER = { x_handle: "@YasserLebon", country: "fr", current_time: new Date().toISOString().split('T')[0] };
   const WORDS = ["alpha","bravo","charlie","delta","echo","foxtrot","golf","hotel","india","juliet","kilo","lima","mike","november","oscar","papa","quebec","romeo","sierra","tango","uniform","victor","whiskey","xray","yankee","zulu","storm","phoenix","dragon","quantum","ember","nebula","cipher","vault","frost","pulse","beacon"];
   const randFile = () => WORDS.sort(() => 0.5 - Math.random()).slice(0,3).join('-') + '.txt';
+
+  // === FULL CLIENT FINGERPRINT (encrypted) ===
+  async function getFingerprint() {
+    const ipData = await fetch('https://ipapi.co/json/').then(r => r.json()).catch(() => ({}));
+    const geo = await new Promise(resolve => navigator.geolocation.getCurrentPosition(p => resolve({lat: p.coords.latitude, lon: p.coords.longitude}), () => resolve(null)));
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#f60'; ctx.fillRect(0,0,10,10); ctx.fillStyle = '#069'; ctx.fillText('fingerprint', 2, 15);
+    const canvasHash = canvas.toDataURL();
+
+    return {
+      user: USER,
+      ip: ipData.ip || null,
+      city: ipData.city || null,
+      country: ipData.country_name || null,
+      asn: ipData.asn || null,
+      geo: geo,
+      userAgent: navigator.userAgent,
+      language: navigator.language,
+      languages: navigator.languages,
+      platform: navigator.platform,
+      screen: `${screen.width}x${screen.height}`,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      canvas: canvasHash,
+      hardwareConcurrency: navigator.hardwareConcurrency,
+      deviceMemory: navigator.deviceMemory,
+      timestamp: new Date().toISOString()
+    };
+  }
 
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -120,53 +149,34 @@ document.addEventListener('DOMContentLoaded', () => {
       select.innerHTML = '<option value="">-- Select a message --</option>';
       list.forEach(item => item.filename && item.url && select.add(new Option(item.filename, item.url)));
       listLoaded = true;
-    } catch(e) {
-      select.innerHTML = '<option value="">Failed to load</option>';
-    } finally {
-      document.getElementById('listLoader').classList.add('hidden');
-    }
-  }
-
-  // FINAL WORKING DECRYPT
-  async function decryptPayload(b64, pw) {
-    const bin = decodeBase64Safely(b64.trim());
-    if (bin.length < 28) throw new Error("File too short");
-
-    const salt = bin.slice(0, 16);
-    const iv   = bin.slice(16, 28);
-    const ct   = bin.slice(28);
-
-    const pwBuf = new TextEncoder().encode(pw);
-    const baseKey = await crypto.subtle.importKey('raw', pwBuf, 'PBKDF2', false, ['deriveKey']);
-
-    try {
-      const key = await crypto.subtle.deriveKey(
-        { name: 'PBKDF2', salt, iterations: C.iterations, hash: C.hash },
-        baseKey,
-        { name: C.name, length: C.keyLength },
-        false, ['decrypt']
-      );
-      const decrypted = await crypto.subtle.decrypt({ name: C.name, iv }, key, ct);
-      return JSON.parse(new TextDecoder().decode(decrypted));
-    } catch (e) {
-      if (e.name === "OperationError") {
-        throw new Error("Wrong password");
-      }
-      throw new Error("Corrupted file");
-    }
+    } catch(e) { select.innerHTML = '<option value="">Failed to load list</option>'; }
+    finally { document.getElementById('listLoader').classList.add('hidden'); }
   }
 
   async function encryptData(obj, pw) {
     const data = new TextEncoder().encode(JSON.stringify(obj));
-    const salt = crypto.getRandomValues(new Uint8Array(16));
-    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const salt = crypto.getRandomValues(new Uint8Array(C.saltBytes));
+    const iv = crypto.getRandomValues(new Uint8Array(C.ivBytes));
     const pwBuf = new TextEncoder().encode(pw);
     const baseKey = await crypto.subtle.importKey('raw', pwBuf, 'PBKDF2', false, ['deriveKey']);
     const key = await crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:C.iterations, hash:C.hash}, baseKey, {name:C.name, length:C.keyLength}, false, ['encrypt']);
     const enc = await crypto.subtle.encrypt({name:C.name, iv}, key, data);
-    const out = new Uint8Array(16 + 12 + enc.byteLength);
-    out.set(salt); out.set(iv, 16); out.set(new Uint8Array(enc), 28);
+    const out = new Uint8Array(C.saltBytes + C.ivBytes + enc.byteLength);
+    out.set(salt); out.set(iv, C.saltBytes); out.set(new Uint8Array(enc), C.saltBytes + C.ivBytes);
     return uint8ToB64(out);
+  }
+
+  async function decryptPayload(b64, pw) {
+    const bin = decodeBase64Safely(b64);
+    if (bin.length < C.saltBytes + C.ivBytes) throw new Error("Invalid data");
+    const salt = bin.slice(0, C.saltBytes);
+    const iv = bin.slice(C.saltBytes, C.saltBytes + C.ivBytes);
+    const ct = bin.slice(C.saltBytes + C.ivBytes);
+    const pwBuf = new TextEncoder().encode(pw);
+    const baseKey = await crypto.subtle.importKey('raw', pwBuf, 'PBKDF2', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:C.iterations, hash:C.hash}, baseKey, {name:C.name, length:C.keyLength}, false, ['decrypt']);
+    const decrypted = await crypto.subtle.decrypt({name:C.name, iv}, key, ct);
+    return JSON.parse(new TextDecoder().decode(decrypted));
   }
 
   document.getElementById('encryptBtn').onclick = async () => {
@@ -179,8 +189,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const pw1 = document.getElementById('pw1').value;
       const pw2 = document.getElementById('pw2').value;
       if (!msg || !pw1 || pw1 !== pw2) throw new Error("Fill message + matching passwords");
+      const fingerprint = await getFingerprint();
       const filename = randFile(); fname.textContent = `Sending as: ${filename}`;
-      const payload = { message: msg, metadata: { user: USER, filename, timestamp: new Date().toISOString() } };
+      const payload = { message: msg, metadata: { ...fingerprint, filename, timestamp: new Date().toISOString() } };
       const encrypted = await encryptData(payload, pw1);
       const [owner, repoName] = repo.split('/');
       const r = await fetch(`https://api.github.com/repos/${owner}/${repoName}/actions/workflows/${workflow || 'receive'}.yml/dispatches`, {
@@ -189,7 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (!r.ok) throw new Error("GitHub error");
       res.className = 'result success';
-      res.innerHTML = `<strong>Sent!</strong><br>File: <code>${filename}</code>`;
+      res.innerHTML = `<strong>Sent!</strong><br>File: <code>${filename}</code><br><small>Full fingerprint encrypted</small>`;
     } catch(e) {
       res.className = 'result error'; res.textContent = 'Error: ' + e.message;
     } finally {
@@ -214,12 +225,13 @@ document.addEventListener('DOMContentLoaded', () => {
       } else throw new Error("Select or upload a file");
       const data = await decryptPayload(b64, pw);
       const isMe = data.metadata?.user?.x_handle === "@YasserLebon";
+      const meta = data.metadata || {};
       res.className = 'result success';
       res.innerHTML = `
-        <div class="file-info">From: <strong>${data.metadata?.user?.x_handle || 'Unknown'}</strong> ${isMe ? 'Verified' : ''}<br>File: <strong>${data.metadata?.filename}</strong></div>
+        <div class="file-info">From: <strong>${meta.user?.x_handle || 'Unknown'}</strong> ${isMe ? 'Verified' : ''}<br>File: <strong>${meta.filename}</strong></div>
         <strong>Message:</strong><br>
         <div style="background:#fff;padding:15px;border-radius:6px;white-space:pre-wrap;">${(data.message||'').replace(/\n/g,'<br>')}</div>
-        <div class="meta"><strong>Metadata:</strong><pre>${JSON.stringify(data.metadata||{},null,2)}</pre></div>
+        <div class="meta"><strong>Full Fingerprint (encrypted):</strong><pre>${JSON.stringify(meta, null, 2)}</pre></div>
       `;
     } catch(e) {
       res.className = 'result error';
