@@ -5,7 +5,7 @@ window.APP_CONFIG = {
   repo: "yblebon/hooks",
 
   // Personal Access Token with 'repo' and 'workflow' scopes
-  token: "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",
+  token: "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",
 
   // Workflow filename (without .yml)
   workflow: "encrypt-text",
