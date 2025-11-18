@@ -1,0 +1,17 @@
+{
+  "crypto": {
+    "pbkdf2": {
+      "iterations": 800000,
+      "saltBytes": 32
+    },
+    "ivBytes": 12
+  },
+  "outputFormat": "base64",
+  "collect": {
+    "location": false,
+    "ip": true
+  },
+  "apis": {
+    "ip": "https://api.ipify.org?format=json"
+  }
+}

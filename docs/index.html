@@ -2,250 +2,237 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Secure Drop • @YasserLebon</title>
+<title>Encrypted Message + Fingerprint (Config from file)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  body{font-family:Arial,sans-serif;max-width:1000px;margin:40px auto;padding:20px;background:#f4f4f9;color:#333;line-height:1.6}
-  h1{color:#2c3e50;text-align:center;margin-bottom:10px}
-  .subtitle{color:#7f8c8d;text-align:center;font-size:15px;margin-bottom:30px}
-  .tabs{text-align:center;margin-bottom:30px}
-  .tab-btn{padding:12px 32px;margin:0 8px;font-size:17px;border:none;border-radius:8px;cursor:pointer;background:#ddd;transition:all .3s}
-  .tab-btn.active{background:#27ae60;color:white}
-  .tab-btn:hover{background:#2ecc71;color:white}
-  .tab-content{background:#fff;padding:40px;border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.1);display:none}
-  .tab-content.active{display:block}
-  label{display:block;margin-top:22px;font-weight:bold}
-  input,textarea,select{width:100%;padding:12px;margin-top:8px;border:1px solid #ddd;border-radius:6px;font-size:16px;box-sizing:border-box}
-  textarea{height:160px;resize:vertical;font-family:monospace}
-  button.main-btn{margin-top:30px;padding:14px 32px;background:#27ae60;color:#fff;border:none;border-radius:8px;font-size:17px;cursor:pointer;width:100%}
-  button.main-btn:hover{background:#1e8449}
-  button.main-btn:disabled{background:#95a5a6;cursor:not-allowed}
-  .result{margin-top:25px;padding:20px;border-radius:8px;font-family:monospace}
-  .success{color:#27ae60;background:#d5f5e3}
-  .error{color:#e74c3c;background:#fadbd8}
-  .hidden{display:none}
-  .warn{color:#e67e22;font-size:14px;margin-top:5px}
-  .loader{margin-top:10px;color:#7f8c8d;font-style:italic}
-  .meta{background:#f8f9fa;padding:18px;border-radius:8px;margin-top:20px;font-size:14px}
-  .meta pre{background:#f0f0f0;padding:12px;border-radius:6px;overflow-x:auto}
-  .file-info{padding:12px;background:#fff3cd;border-radius:6px;font-weight:bold;margin-top:15px}
-  .pass-wrapper{position:relative}
-  .pass-wrapper input{padding-right:44px}
-  .toggle-pass{position:absolute;right:10px;top:44px;cursor:pointer;font-size:18px;user-select:none;color:#7f8c8d}
-  .toggle-pass:hover{color:#2c3e50}
+  body {font-family:system-ui,sans-serif;margin:0;background:#f0f2f5;padding:20px;}
+  .container {max-width:920px;margin:0 auto;background:white;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,0.1);overflow:hidden;}
+  .tabs {display:flex;background:#1a1a2e;}
+  .tab {flex:1;padding:20px;text-align:center;color:#aaa;cursor:pointer;font-weight:600;transition:.3s;}
+  .tab.active {background:#0f3460;color:white;}
+  .content {padding:40px;display:none;}
+  .content.active {display:block;}
+  textarea, input[type=password] {width:100%;padding:14px;margin:12px 0;border:1px solid #ccc;border-radius:10px;font-size:15px;box-sizing:border-box;}
+  textarea {height:160px;resize:vertical;font-family:monospace;}
+  button {background:#0f3460;color:white;border:none;padding:14px 32px;border-radius:10px;font-size:16px;cursor:pointer;}
+  button:disabled {background:#666;cursor:not-allowed;}
+  .pw {position:relative;}
+  .eye {position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:20px;cursor:pointer;}
+  .result {margin-top:20px;padding:18px;background:#f8f9fc;border-radius:10px;font-family:monospace;font-size:13.5px;max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-all;border:1px solid #e0e0e0;}
+  .error {color:#c33;margin-top:10px;}
+  .warning {background:#fff3cd;color:#856404;padding:12px;border-radius:8px;margin:15px 0;font-size:0.95em;}
 </style>
 </head>
 <body>
-<h1>Secure Drop</h1>
-<div class="subtitle">
-  Private encrypted messages • @YasserLebon • France<br>
-  <small>November 17, 2025 05:08 PM CET</small>
-</div>
 
-<div class="tabs">
-  <button class="tab-btn active" data-tab="encrypt">Encrypt & Send</button>
-  <button class="tab-btn" data-tab="decrypt">Decrypt Message</button>
-</div>
-
-<!-- ENCRYPT TAB -->
-<div id="encrypt" class="tab-content active">
-  <label for="msg">Your Secret Message</label>
-  <textarea id="msg" placeholder="Type your confidential message here..."></textarea>
-
-  <label for="pw1">Encryption Password</label>
-  <div class="pass-wrapper">
-    <input type="password" id="pw1">
-    <span class="toggle-pass" data-target="pw1">Show</span>
+<div class="container">
+  <div class="tabs">
+    <div class="tab active" data-tab="encrypt">Encrypt</div>
+    <div class="tab" data-tab="decrypt">Decrypt</div>
   </div>
 
-  <label for="pw2">Confirm Password</label>
-  <div class="pass-wrapper">
-    <input type="password" id="pw2">
-    <span class="toggle-pass" data-target="pw2">Show</span>
-  </div>
-  <div id="pwError" class="warn hidden">Passwords do not match!</div>
+  <div id="status" class="warning" style="margin:20px;display:none;"></div>
 
-  <button class="main-btn" id="encryptBtn">Encrypt & Send to GitHub</button>
-  <div id="encryptResult" class="result hidden"></div>
-  <div id="encryptFilename" style="margin-top:15px;font-weight:bold;color:#d35400"></div>
-</div>
+  <div id="encrypt" class="content active">
+    <h2>Encrypt Message + Device Fingerprint</h2>
+    <textarea id="msg" placeholder="Your secret message..."></textarea>
 
-<!-- DECRYPT TAB -->
-<div id="decrypt" class="tab-content">
-  <label for="messageList">Select Message from Server</label>
-  <select id="messageList"><option>-- Loading messages... --</option></select>
-  <div id="listLoader" class="loader hidden">Loading message list...</div>
+    <label>Password</label>
+    <div class="pw"><input type="password" id="pass1"><button class="eye" onclick="toggle('pass1')">Eye</button></div>
 
-  <label for="encFile">Or Upload Local Encrypted File</label>
-  <input type="file" id="encFile" accept=".txt">
+    <label>Confirm Password</label>
+    <div class="pw"><input type="password" id="pass2"><button class="eye" onclick="toggle('pass2')">Eye</button></div>
 
-  <label for="decPw">Decryption Password</label>
-  <div class="pass-wrapper">
-    <input type="password" id="decPw">
-    <span class="toggle-pass" data-target="decPw">Show</span>
+    <button id="encBtn" onclick="encryptMessage()" disabled>Encrypt (config-loaded)</button>
+
+    <div id="encResult" class="result" style="display:none;"></div>
+    <div id="encError" class="error"></div>
   </div>
 
-  <button class="main-btn" id="decryptBtn">Decrypt Selected Message</button>
-  <div id="decryptResult" class="result hidden"></div>
+  <div id="decrypt" class="content">
+    <h2>Decrypt Message</h2>
+    <textarea id="encInput" placeholder="Paste encrypted string..."></textarea>
+
+    <label>Password</label>
+    <div class="pw"><input type="password" id="decPass"><button class="eye" onclick="toggle('decPass')">Eye</button></div>
+
+    <button onclick="decryptMessage()">Decrypt</button>
+
+    <div id="decResult" class="result" style="display:none;"></div>
+    <div id="decError" class="error"></div>
+  </div>
 </div>
 
-<script src="config.js"></script>
 <script>
-function decodeBase64Safely(b64) {
-  b64 = b64.trim().replace(/-/g, '+').replace(/_/g, '/');
-  switch (b64.length % 4) { case 2: b64 += '=='; break; case 3: b64 += '='; break; }
-  try { return Uint8Array.from(atob(b64), c => c.charCodeAt(0)); }
-  catch (e) { const a = new Uint8Array(b64.length); for(let i=0;i<b64.length;i++) a[i]=b64.charCodeAt(i)&0xFF; return a; }
+// Default fallback config (used if config.json is missing or blocked)
+const DEFAULT_CONFIG = {
+  crypto: {
+    algorithm: "AES-GCM",
+    keyLength: 256,
+    pbkdf2: { name: "PBKDF2", hash: "SHA-256", iterations: 600000, saltBytes: 16 },
+    ivBytes: 12
+  },
+  outputFormat: "base64", // "base64" or "hex"
+  collect: {
+    message: true, timestamp: true, userAgent: true, language: true,
+    platform: true, screen: true, timezone: true, ip: true, location: true
+  },
+  apis: { ip: "https://api.ipify.org?format=json" }
+};
+
+let CONFIG = { ...DEFAULT_CONFIG };
+
+async function loadConfig() {
+  try {
+    const res = await fetch('config.json?' + Date.now()); // cache buster
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const loaded = await res.json();
+    CONFIG = deepMerge(DEFAULT_CONFIG, loaded);
+    document.getElementById('status').style.display = 'none';
+  } catch (err) {
+    console.warn("Could not load config.json → using defaults", err);
+    document.getElementById('status').textContent =
+      "Warning: config.json not found or blocked (CORS/local file issue). Using built-in defaults.";
+    document.getElementById('status').style.display = 'block';
+  }
 }
-function uint8ToB64(arr) { return btoa(String.fromCharCode(...arr)); }
 
-document.addEventListener('DOMContentLoaded', () => {
-  if (!window.APP_CONFIG?.crypto) { alert("config.js missing!"); return; }
-  const { repo, token, workflow, jsonbin_list_url, jsonbin_secret, crypto: C } = window.APP_CONFIG;
-
-  const USER = { x_handle: "@YasserLebon", country: "fr", current_time: "2025-11-17T17:08:00+01:00" };
-  const WORDS = ["alpha","bravo","charlie","delta","echo","foxtrot","golf","hotel","india","juliet","kilo","lima","mike","november","oscar","papa","quebec","romeo","sierra","tango","uniform","victor","whiskey","xray","yankee","zulu","storm","phoenix","dragon","quantum","ember","nebula","cipher","vault","frost","pulse","beacon"];
-  const randFile = () => WORDS.sort(() => 0.5 - Math.random()).slice(0,3).join('-') + '.txt';
-
-  // === TAB SWITCHING ===
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(btn.dataset.tab).classList.add('active');
-      if (btn.dataset.tab === 'decrypt') loadMessageList();
-    });
-  });
-
-  // === SHOW/HIDE PASSWORD ===
-  document.querySelectorAll('.toggle-pass').forEach(t => {
-    t.addEventListener('click', () => {
-      const inp = document.getElementById(t.dataset.target);
-      const isPass = inp.type === 'password';
-      inp.type = isPass ? 'text' : 'password';
-      t.textContent = isPass ? 'Hide' : 'Show';
-    });
-  });
-
-  // === LOAD MESSAGE LIST (only once) ===
-  let listLoaded = false;
-  async function loadMessageList() {
-    if (listLoaded) return;
-    const select = document.getElementById('messageList');
-    document.getElementById('listLoader').classList.remove('hidden');
-    try {
-      const headers = jsonbin_secret ? { "X-Access-Key": jsonbin_secret } : {};
-      const res = await fetch(jsonbin_list_url, { headers });
-      if (!res.ok) throw 0;
-      const list = (await res.json()).record || await res.json();
-      select.innerHTML = '<option value="">-- Select a message --</option>';
-      list.forEach(item => item.filename && item.url && select.add(new Option(item.filename, item.url)));
-      listLoaded = true;
-    } catch(e) { select.innerHTML = '<option value="">Failed to load list</option>'; }
-    finally { document.getElementById('listLoader').classList.add('hidden'); }
-  }
-
-  // === ENCRYPT ===
-  async function encryptData(obj, pw) {
-    const data = new TextEncoder().encode(JSON.stringify(obj));
-    const salt = crypto.getRandomValues(new Uint8Array(C.saltBytes));
-    const iv = crypto.getRandomValues(new Uint8Array(C.ivBytes));
-    const pwBuf = new TextEncoder().encode(pw);
-    const baseKey = await crypto.subtle.importKey('raw', pwBuf, 'PBKDF2', false, ['deriveKey']);
-    const key = await crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:C.iterations, hash:C.hash}, baseKey, {name:C.name, length:C.keyLength}, false, ['encrypt']);
-    const enc = await crypto.subtle.encrypt({name:C.name, iv}, key, data);
-    const out = new Uint8Array(C.saltBytes + C.ivBytes + enc.byteLength);
-    out.set(salt); out.set(iv, C.saltBytes); out.set(new Uint8Array(enc), C.saltBytes + C.ivBytes);
-    return uint8ToB64(out);
-  }
-
-  document.getElementById('encryptBtn').onclick = async () => {
-    const btn = document.getElementById('encryptBtn');
-    const res = document.getElementById('encryptResult');
-    const fname = document.getElementById('encryptFilename');
-    btn.disabled = true; res.className = 'result hidden'; fname.textContent = '';
-    try {
-      const msg = document.getElementById('msg').value.trim();
-      const pw1 = document.getElementById('pw1').value;
-      const pw2 = document.getElementById('pw2').value;
-      if (!msg || !pw1 || pw1 !== pw2) throw new Error("Fill message + matching passwords");
-      const filename = randFile(); fname.textContent = `Sending as: ${filename}`;
-      const payload = { message: msg, metadata: { user: USER, filename, timestamp: new Date().toISOString() } };
-      const encrypted = await encryptData(payload, pw1);
-      const [owner, repoName] = repo.split('/');
-      const r = await fetch(`https://api.github.com/repos/${owner}/${repoName}/actions/workflows/${workflow || 'receive'}.yml/dispatches`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ref: 'main', inputs: { encrypted_payload: encrypted, output_filename: filename } })
-      });
-      if (!r.ok) throw new Error("GitHub error");
-      res.className = 'result success';
-      res.innerHTML = `<strong>Sent successfully!</strong><br>File: <code>${filename}</code>`;
-    } catch(e) {
-      res.className = 'result error'; res.textContent = 'Error: ' + e.message;
-    } finally {
-      btn.disabled = false; res.classList.remove('hidden');
+// Simple deep merge (sufficient for this use case)
+function deepMerge(target, source) {
+  const result = { ...target };
+  for (const key in source) {
+    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+      result[key] = deepMerge(target[key] || {}, source[key]);
+    } else {
+      result[key] = source[key];
     }
-  };
-
-  // === DECRYPT (supports old + new formats) ===
-  async function decryptPayload(b64, pw) {
-    const bin = decodeBase64Safely(b64);
-    if (bin.length < C.saltBytes + C.ivBytes) throw new Error("Invalid data");
-    const attempts = [
-      { salt: bin.slice(0, C.saltBytes), iv: bin.slice(C.saltBytes, C.saltBytes + C.ivBytes), ct: bin.slice(C.saltBytes + C.ivBytes) },
-      { salt: bin.slice(C.ivBytes, C.ivBytes + C.saltBytes), iv: bin.slice(0, C.ivBytes), ct: bin.slice(C.saltBytes + C.ivBytes) }
-    ];
-    const pwBuf = new TextEncoder().encode(pw);
-    const baseKey = await crypto.subtle.importKey('raw', pwBuf, 'PBKDF2', false, ['deriveKey']);
-    for (const {salt, iv, ct} of attempts) {
-      try {
-        const key = await crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:C.iterations, hash:C.hash}, baseKey, {name:C.name, length:C.keyLength}, false, ['decrypt']);
-        const dec = await crypto.subtle.decrypt({name:C.name, iv}, key, ct);
-        return JSON.parse(new TextDecoder().decode(dec));
-      } catch(e) { continue; }
-    }
-    throw new Error("Wrong password or corrupted file");
   }
+  return result;
+}
 
-  document.getElementById('decryptBtn').onclick = async () => {
-    const btn = document.getElementById('decryptBtn');
-    const res = document.getElementById('decryptResult');
-    btn.disabled = true; btn.textContent = 'Decrypting...'; res.className = 'result hidden';
-    try {
-      const pw = document.getElementById('decPw').value;
-      if (!pw) throw new Error("Password required");
-      let b64 = null;
-      if (document.getElementById('messageList').value) {
-        const r = await fetch(document.getElementById('messageList').value);
-        if (!r.ok) throw new Error("Download failed");
-        b64 = await r.text();
-      } else if (document.getElementById('encFile').files[0]) {
-        b64 = await document.getElementById('encFile').files[0].text();
-      } else throw new Error("Select or upload a file");
-      const data = await decryptPayload(b64, pw);
-      const isMe = data.metadata?.user?.x_handle === "@YasserLebon";
-      res.className = 'result success';
-      res.innerHTML = `
-        <div class="file-info">From: <strong>${data.metadata?.user?.x_handle || 'Unknown'}</strong> ${isMe ? 'Verified' : ''}<br>File: <strong>${data.metadata?.filename}</strong></div>
-        <strong>Message:</strong><br>
-        <div style="background:#fff;padding:15px;border-radius:6px;white-space:pre-wrap;">${(data.message||'').replace(/\n/g,'<br>')}</div>
-        <div class="meta"><strong>Metadata:</strong><pre>${JSON.stringify(data.metadata||{},null,2)}</pre></div>
-      `;
-    } catch(e) {
-      res.className = 'result error';
-      res.innerHTML = `<strong>Error:</strong> ${e.message}<br><small>Wrong password?</small>`;
-    } finally {
-      btn.disabled = false; btn.textContent = 'Decrypt Selected Message'; res.classList.remove('hidden');
-    }
-  };
-
-  // Password match check
-  ['pw1','pw2'].forEach(id => document.getElementById(id).addEventListener('input', () => {
-    const p1 = document.getElementById('pw1').value;
-    const p2 = document.getElementById('pw2').value;
-    document.getElementById('pwError').classList.toggle('hidden', !p2 || p1 === p2);
-  }));
+// Load config first
+loadConfig().then(() => {
+  // Enable UI after config is ready
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => openTab(t.dataset.tab)));
+  document.getElementById('pass1').addEventListener('input', checkPw);
+  document.getElementById('pass2').addEventListener('input', checkPw);
 });
+
+function openTab(tab) {
+  document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(tab).classList.add('active');
+  document.querySelector(`.tab[data-tab="${tab}"]`).classList.add('active');
+}
+
+function toggle(id) {
+  const el = document.getElementById(id);
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+function checkPw() {
+  const ok = document.getElementById('pass1').value &&
+             document.getElementById('pass1').value === document.getElementById('pass2').value;
+  document.getElementById('encBtn').disabled = !ok;
+}
+
+// Same collect/encrypt/decrypt logic as before, now using CONFIG
+async function collectData() {
+  const d = {};
+  if (CONFIG.collect.message) d.message = document.getElementById('msg').value.trim();
+  if (CONFIG.collect.timestamp) d.timestamp = new Date().toISOString();
+  if (CONFIG.collect.userAgent) d.userAgent = navigator.userAgent;
+  if (CONFIG.collect.language) d.language = navigator.language || navigator.languages;
+  if (CONFIG.collect.platform) d.platform = navigator.platform;
+  if (CONFIG.collect.screen) d.screen = `${screen.width}x${screen.height}x${screen.colorDepth}`;
+  if (CONFIG.collect.timezone) d.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (CONFIG.collect.ip) {
+    try {
+      const r = await fetch(CONFIG.apis.ip);
+      d.ip = (await r.json()).ip || await r.text();
+    } catch(e) { d.ip = "unavailable"; }
+  }
+  if (CONFIG.collect.location && navigator.geolocation) {
+    try {
+      const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {timeout:8000}));
+      d.location = {lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy};
+    } catch(e) { d.location = "denied"; }
+  }
+  return d;
+}
+
+async function encryptMessage() {
+  const password = document.getElementById('pass1').value;
+  const result = document.getElementById('encResult');
+  const err = document.getElementById('encError');
+  result.style.display = 'none'; err.textContent = '';
+
+  try {
+    const payload = await collectData();
+    const json = JSON.stringify(payload, null, 2);
+
+    const salt = crypto.getRandomValues(new Uint8Array(CONFIG.crypto.pbkdf2.saltBytes));
+    const iv = crypto.getRandomValues(new Uint8Array(CONFIG.crypto.ivBytes));
+
+    const key = await crypto.subtle.deriveKey(
+      {name:"PBKDF2", salt, iterations:CONFIG.crypto.pbkdf2.iterations, hash:CONFIG.crypto.pbkdf2.hash},
+      await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]),
+      {name:CONFIG.crypto.algorithm, length:CONFIG.crypto.keyLength},
+      false, ["encrypt"]
+    );
+
+    const encrypted = await crypto.subtle.encrypt({name:CONFIG.crypto.algorithm, iv}, key, new TextEncoder().encode(json));
+
+    const combined = new Uint8Array(salt.byteLength + iv.byteLength + encrypted.byteLength);
+    combined.set(salt); combined.set(iv, salt.byteLength); combined.set(new Uint8Array(encrypted), salt.byteLength + iv.byteLength);
+
+    const output = CONFIG.outputFormat === "hex"
+      ? Array.from(combined).map(b=>b.toString(16).padStart(2,'0')).join('')
+      : btoa(String.fromCharCode(...combined));
+
+    result.textContent = output;
+    result.style.display = 'block';
+  } catch (e) {
+    err.textContent = "Encryption failed: " + e.message;
+  }
+}
+
+async function decryptMessage() {
+  const input = document.getElementById('encInput').value.trim();
+  const password = document.getElementById('decPass').value;
+  const result = document.getElementById('decResult');
+  const err = document.getElementById('decError');
+  result.style.display = 'none'; err.textContent = '';
+
+  if (!input || !password) return err.textContent = "Missing data/password";
+
+  try {
+    let data;
+    if (CONFIG.outputFormat === "hex") {
+      data = Uint8Array.from(input.match(/.{1,2}/g).map(b=>parseInt(b,16)));
+    } else {
+      data = Uint8Array.from(atob(input), c=>c.charCodeAt(0));
+    }
+
+    const salt = data.slice(0, CONFIG.crypto.pbkdf2.saltBytes);
+    const iv = data.slice(CONFIG.crypto.pbkdf2.saltBytes, CONFIG.crypto.pbkdf2.saltBytes + CONFIG.crypto.ivBytes);
+    const ct = data.slice(CONFIG.crypto.pbkdf2.saltBytes + CONFIG.crypto.ivBytes);
+
+    const key = await crypto.subtle.deriveKey(
+      {name:"PBKDF2", salt, iterations:CONFIG.crypto.pbkdf2.iterations, hash:CONFIG.crypto.pbkdf2.hash},
+      await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]),
+      {name:CONFIG.crypto.algorithm, length:CONFIG.crypto.keyLength},
+      false, ["decrypt"]
+    );
+
+    const plain = await crypto.subtle.decrypt({name:CONFIG.crypto.algorithm, iv}, key, ct);
+    result.textContent = new TextDecoder().decode(plain);
+    result.style.display = 'block';
+  } catch (e) {
+    err.textContent = "Decryption failed — wrong password or corrupted data";
+  }
+}
 </script>
+
 </body>
 </html>
